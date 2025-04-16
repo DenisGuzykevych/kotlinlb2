@@ -1,6 +1,7 @@
 package com.example.lb2
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.lb2.ui.theme.LB2Theme
@@ -50,15 +52,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+class TooEarlyException(message: String) : Exception(message)
 
 @Composable
 fun Clicker(modifier: Modifier = Modifier) {
-    val randomSeconds = remember { Random.nextInt(1, 5) }
-    var reactionTime by remember { mutableStateOf(0.0) }
+    val context = LocalContext.current
+
+    var reactionTimes by remember { mutableStateOf(listOf<Double>()) }
+    var currentAttempt by remember { mutableStateOf(1) }
     var showBox by remember { mutableStateOf(false) }
     var trigger by remember { mutableStateOf(false) }
     var startTime by remember { mutableStateOf(0L) }
-    val context = LocalContext.current
+    var errorMessage by remember { mutableStateOf("") }
+    val randomSeconds = remember(trigger) { Random.nextInt(1, 5) }
 
     LaunchedEffect(trigger) {
         if (trigger) {
@@ -68,51 +74,98 @@ fun Clicker(modifier: Modifier = Modifier) {
         }
     }
 
-
     fun onBoxClick() {
-        if (showBox) {
-            val endTime = System.currentTimeMillis()
-            reactionTime = (endTime - startTime) / 1000.0
+        try {
+            if (showBox) {
+                val endTime = System.currentTimeMillis()
+                val reactionTime = (endTime - startTime) / 1000.0
+                reactionTimes = reactionTimes + reactionTime
+                if (currentAttempt < 5) {
+                    currentAttempt++
+                }
+                showBox = false
+                trigger = false
+                errorMessage = ""
+            } else if (trigger && !showBox) {
+                throw TooEarlyException("Too early! You clicked before the box appeared.")
+            }
+        } catch (e: TooEarlyException) {
+            errorMessage = e.message ?: "Too early!"
             showBox = false
             trigger = false
         }
     }
 
-    Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(enabled = currentAttempt <= 5) { onBoxClick() }
     ) {
-        Text("Test your reaction time!")
+        Column(
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Text("Attempt: $currentAttempt / 5")
 
-        Spacer(modifier = Modifier.padding(10.dp))
+            if (errorMessage.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = errorMessage,
+                    color = Color.Red,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
+            Spacer(modifier = Modifier.height(10.dp))
 
-        Button(onClick = {
-            showBox = false
-            trigger = true
-        }) {
-            Text("Launch the timer!")
-        }
+            Button(
+                onClick = {
+                    if (currentAttempt <= 5) {
+                        showBox = false
+                        trigger = true
+                        errorMessage = ""
+                    }
+                },
+                enabled = currentAttempt <= 5
+            ) {
+                Text("Start Attempt")
+            }
 
-        Spacer(modifier = Modifier.padding(20.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
+            if (showBox) {
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .background(Color.Red, shape = CircleShape)
+                )
+            }
 
-        if (showBox) {
-            Box(
-                modifier = Modifier
-                    .size(100.dp)
-                    .background(Color.Red, shape = CircleShape)
-                    .clickable { onBoxClick() }
-            )
-        }
+            Spacer(modifier = Modifier.height(20.dp))
 
-        if (reactionTime > 0) {
-            Text("Your reaction time is ${"%.2f".format(reactionTime)} seconds")
+            if (reactionTimes.isNotEmpty()) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Reaction times:")
+                    reactionTimes.forEachIndexed { index, time ->
+                        Text("Attempt ${index + 1}: ${"%.2f".format(time)}s")
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (reactionTimes.size == 5) {
+                        val avg = reactionTimes.average()
+                        val best = reactionTimes.minOrNull()
+                        val worst = reactionTimes.maxOrNull()
+                        Text("Average: ${"%.2f".format(avg)}s")
+                        Text("Best: ${"%.2f".format(best)}s")
+                        Text("Worst: ${"%.2f".format(worst)}s")
+                    }
+                }
+            }
         }
     }
 }
-
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
